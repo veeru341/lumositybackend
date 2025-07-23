@@ -5,6 +5,8 @@ async function runLumosityStats() {
   const accounts = JSON.parse(fs.readFileSync('accounts.json', 'utf-8'));
   let allResults = {};
 
+  fs.writeFileSync('results.js', 'module.exports = {};\n');
+
   try {
     if (fs.existsSync('results.js')) {
       const existing = require('./results.js');

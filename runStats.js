@@ -1,8 +1,20 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs');
 
 async function runLumosityStats() {
-  const accounts = require('./accounts.json');
-  const allResults = {};
+  const accounts = JSON.parse(fs.readFileSync('accounts.json', 'utf-8'));
+  let allResults = {};
+
+  try {
+    if (fs.existsSync('results.js')) {
+      const existing = require('./results.js');
+      if (typeof existing === 'object') {
+        allResults = existing;
+      }
+    }
+  } catch (e) {
+    allResults = {};
+  }
 
   for (const account of accounts) {
     let success = false;
@@ -10,23 +22,18 @@ async function runLumosityStats() {
     let stats = null;
 
     const browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: false,
+      slowMo: 50,
+      defaultViewport: null,
+      args: ['--start-maximized'],
     });
 
     const page = await browser.newPage();
 
-    // 🛑 Block unnecessary resources (images, fonts, CSS)
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const type = req.resourceType();
-      if (['image', 'stylesheet', 'font'].includes(type)) req.abort();
-      else req.continue();
-    });
-
     try {
-      console.log(`🌐 Logging in as: ${account.email}`);
-      await page.goto('https://app.lumosity.com/login', { waitUntil: 'domcontentloaded' });
+      console.log(`Logging in as: ${account.email}`);
+      await page.goto('https://app.lumosity.com/login', { waitUntil: 'networkidle2' });
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Click "Email" button if needed
       try {
@@ -40,37 +47,30 @@ async function runLumosityStats() {
           }
         }
       } catch {
-        console.log('⚠️ Email login button not found or already open');
+        console.log('⚠ Email login button not found or already open');
       }
 
-      await page.waitForSelector('#email', { timeout: 10000 });
-      await page.type('#email', account.email, { delay: 20 });
-      await page.type('#password', account.password, { delay: 20 });
+      await page.waitForSelector('input#email', { timeout: 20000 });
+      await page.type('#email', account.email, { delay: 50 });
+      await page.type('#password', account.password, { delay: 50 });
 
-      // Submit login
       const buttons = await page.$$('button');
       for (const btn of buttons) {
         const text = await page.evaluate(el => el.innerText.trim(), btn);
         if (text === 'Log In') {
-          await Promise.all([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-            btn.click()
-          ]);
+          await btn.click();
           console.log('🔓 Submitted login');
           break;
         }
       }
 
-      // Wait for stats container
-      await page.waitForSelector('[data-name="progress-container"]', { timeout: 15000 });
+      await page.waitForSelector('[data-name="progress-container"]', { timeout: 20000 });
 
-      // Get display name
       displayName = await page.evaluate(() => {
         const el = document.querySelector('div.text-body-text-1.font-semibold');
         return el ? el.innerText.trim() : null;
       });
 
-      // Get stats
       stats = await page.evaluate(() => {
         const result = {};
         const overall = document.querySelector('button div.text-body-text-2');
@@ -95,23 +95,28 @@ async function runLumosityStats() {
       if (displayName && stats && Object.keys(stats).length > 0) {
         allResults[displayName] = stats;
         success = true;
-        console.log(`✅ Stats saved for ${displayName}`);
+        console.log(`Stats saved for ${displayName}`);
       } else if (stats && Object.keys(stats).length > 0) {
         allResults[account.email] = stats;
         success = true;
-        console.log(`✅ Stats saved for ${account.email}`);
+        console.log(`Stats saved for ${account.email}`);
       } else {
-        console.log(`❌ No stats found for ${account.email}`);
+        console.log(`No stats found for ${account.email}`);
       }
-
     } catch (err) {
-      console.log(`❌ Failed for ${account.email}: ${err.message}`);
+      console.log(`Failed for ${account.email}: ${err.message}`);
     }
 
     await browser.close();
+
+    if (success) {
+      fs.writeFileSync('results.js', 'module.exports = ' + JSON.stringify(allResults, null, 2) + ';\n');
+      console.log('✅ Updated results.js');
+    }
   }
 
   return allResults;
 }
 
+// ✅ Export the function
 module.exports = runLumosityStats;

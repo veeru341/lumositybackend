@@ -21,17 +21,16 @@ async function runLumosityStats() {
     let displayName = null;
     let stats = null;
 
+    // ✅ FIXED: Add args to support Railway / Linux headless environment
     const browser = await puppeteer.launch({
-      headless: false,
-      slowMo: 50,
-      defaultViewport: null,
-      args: ['--start-maximized'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: 'new', // or true if needed
     });
 
     const page = await browser.newPage();
 
     try {
-      console.log(`Logging in as: ${account.email}`);
+      console.log(`🌐 Logging in as: ${account.email}`);
       await page.goto('https://app.lumosity.com/login', { waitUntil: 'networkidle2' });
       await new Promise(resolve => setTimeout(resolve, 3000));
 
@@ -95,16 +94,16 @@ async function runLumosityStats() {
       if (displayName && stats && Object.keys(stats).length > 0) {
         allResults[displayName] = stats;
         success = true;
-        console.log(`Stats saved for ${displayName}`);
+        console.log(`📊 Stats saved for ${displayName}`);
       } else if (stats && Object.keys(stats).length > 0) {
         allResults[account.email] = stats;
         success = true;
-        console.log(`Stats saved for ${account.email}`);
+        console.log(`📊 Stats saved for ${account.email}`);
       } else {
-        console.log(`No stats found for ${account.email}`);
+        console.log(`⚠ No stats found for ${account.email}`);
       }
     } catch (err) {
-      console.log(`Failed for ${account.email}: ${err.message}`);
+      console.log(`❌ Failed for ${account.email}: ${err.message}`);
     }
 
     await browser.close();
@@ -118,5 +117,4 @@ async function runLumosityStats() {
   return allResults;
 }
 
-// ✅ Export the function
 module.exports = runLumosityStats;
